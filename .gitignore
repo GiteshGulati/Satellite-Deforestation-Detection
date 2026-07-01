@@ -1,0 +1,11 @@
+.junie/
+.venv/
+__pycache__/
+*.pyc
+
+.idea/
+
+models/
+outputs/
+
+.DS_Store
