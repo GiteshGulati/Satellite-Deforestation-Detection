@@ -1,0 +1,239 @@
+================================================================================
+  SATELLITE DEFORESTATION DETECTION — USER GUIDE
+================================================================================
+
+
+OVERVIEW
+--------------------------------------------------------------------------------
+
+This project uses a ResNet50 deep learning model (transfer learning) to
+classify satellite images into 10 land cover types, then applies the model
+to detect deforestation by comparing satellite imagery from two time periods.
+
+The project has 3 scripts that run in order:
+
+  1. train.py              — Train the classifier on EuroSAT dataset
+  2. evaluate.py            — Test the model and generate accuracy reports
+  3. detect_deforestation.py — Detect deforestation from satellite images
+
+
+PREREQUISITES
+--------------------------------------------------------------------------------
+
+1. Python 3.10+ installed
+2. NVIDIA GPU with CUDA support (recommended, but CPU also works)
+3. Install dependencies:
+
+     pip install -r requirements.txt
+
+4. EuroSAT dataset must be present at:
+
+     data/EuroSAT/2750/
+       ├── AnnualCrop/
+       ├── Forest/
+       ├── HerbaceousVegetation/
+       ├── Highway/
+       ├── Industrial/
+       ├── Pasture/
+       ├── PermanentCrop/
+       ├── Residential/
+       ├── River/
+       └── SeaLake/
+
+   Download from: https://www.kaggle.com/datasets/apollo2506/eurosat-dataset
+
+
+================================================================================
+STEP 1: TRAIN THE MODEL
+================================================================================
+
+Command:
+  python src/train.py
+
+What it does:
+  - Loads the EuroSAT dataset (27,000 satellite images, 10 classes)
+  - Splits into 80% train / 10% validation / 10% test
+  - Loads a pre-trained ResNet50 model (trained on ImageNet)
+  - Freezes the backbone and trains only the final classification layer
+  - Trains for 10 epochs with Adam optimizer (learning rate = 0.001)
+  - Saves the best model checkpoint whenever validation accuracy improves
+
+Expected output:
+  - Progress bars for each training and validation batch
+  - Per-epoch summary showing training loss, training accuracy, and
+    validation accuracy
+  - Best model saved to: models/satellite_classifier.pth
+
+Estimated time:
+  - GPU (RTX 3050): ~10-15 minutes
+  - CPU only: ~1-2 hours
+
+What to look for:
+  - Training loss should decrease each epoch
+  - Validation accuracy should increase and stabilize around 90-95%
+  - The best model is saved automatically — you don't need to pick which
+    epoch to keep
+
+Note:
+  - You must run this step first. The other two scripts depend on the
+    saved model file.
+
+
+================================================================================
+STEP 2: EVALUATE THE MODEL
+================================================================================
+
+Command:
+  python src/evaluate.py
+
+What it does:
+  - Loads the trained model from models/satellite_classifier.pth
+  - Runs it on the test set (2,700 images the model never saw during training)
+  - Prints a classification report with precision, recall, and F1-score
+    for each of the 10 land cover classes
+  - Generates a confusion matrix heatmap showing which classes get
+    confused with each other
+  - Provides per-class analysis ranking classes from best to worst
+
+Output files:
+  - outputs/confusion_matrix.png    — Visual heatmap (use this in your paper)
+  - outputs/evaluation_report.txt   — Full text report with all metrics
+
+What to look for:
+  - Overall accuracy should be around 90-95%
+  - Forest and SeaLake typically get the highest accuracy (distinct patterns)
+  - Highway and River may get confused (both are thin linear features)
+  - Pasture, HerbaceousVegetation, and AnnualCrop may overlap (all green)
+  - The confusion matrix shows exactly where the model makes mistakes
+
+Note:
+  - Requires the trained model from Step 1.
+  - Uses the same random seed (42) as training to ensure the test set
+    contains the exact same images.
+
+
+================================================================================
+STEP 3: DETECT DEFORESTATION
+================================================================================
+
+There are two ways to run this script:
+
+
+OPTION A — DEMO MODE (no extra data needed)
+--------------------------------------------
+
+Command:
+  python src/detect_deforestation.py --demo
+
+What it does:
+  - Creates two synthetic "satellite scenes" from EuroSAT images:
+      * "Before" scene: a landscape that is ~70% forest
+      * "After" scene: same landscape but with some forest areas cleared
+        and replaced by cropland and residential areas
+  - Splits both scenes into 64x64 pixel patches
+  - Classifies every patch using the trained model
+  - Compares the two classification maps
+  - Flags every patch where "Forest" became "AnnualCrop", "Industrial",
+    "Pasture", "PermanentCrop", or "Residential" — these are deforestation
+  - Generates visualizations and a summary report
+
+Output files:
+  - outputs/demo_before.png                    — The synthetic "before" scene
+  - outputs/demo_after.png                     — The synthetic "after" scene
+  - outputs/demo_landcover_before.png          — Color-coded land cover map
+  - outputs/demo_landcover_after.png           — Color-coded land cover map
+  - outputs/demo_deforestation_detection.png   — 3-panel change detection view
+  - outputs/demo_deforestation_report.txt      — Summary statistics
+
+This mode is useful for:
+  - Testing the pipeline without downloading satellite data
+  - Understanding how the change detection works
+  - Creating figures for your paper/presentation
+
+
+OPTION B — REAL SATELLITE IMAGERY
+--------------------------------------------
+
+Command:
+  python src/detect_deforestation.py --before path/to/image_2018.tif --after path/to/image_2024.tif
+
+What it does:
+  - Same pipeline as demo mode, but on real satellite images
+  - You provide two images of the same area from different dates
+  - The script patches, classifies, compares, and reports
+
+Where to get satellite images:
+  - Copernicus Open Access Hub: https://scihub.copernicus.eu
+    (Free Sentinel-2 imagery, requires account)
+  - Google Earth Engine: https://earthengine.google.com
+    (Free, requires Google account)
+  - Download RGB bands for the same area from two different dates
+    (e.g., 2018 and 2024)
+
+Supported image formats:
+  - .tif, .tiff (GeoTIFF — standard satellite format)
+  - .png, .jpg (if you export/screenshot from Earth Engine)
+  - Any format PIL/Pillow can open
+
+Custom patch size:
+  python src/detect_deforestation.py --before img1.tif --after img2.tif --patch-size 128
+
+Output files:
+  - outputs/landcover_before.png          — Land cover map
+  - outputs/landcover_after.png           — Land cover map
+  - outputs/deforestation_detection.png   — Change detection visualization
+  - outputs/deforestation_report.txt      — Analysis report
+
+
+================================================================================
+PROJECT STRUCTURE
+================================================================================
+
+PythonProject/
+├── src/
+│   ├── train.py                  — Model training script
+│   ├── evaluate.py               — Model evaluation script
+│   └── detect_deforestation.py   — Deforestation detection pipeline
+├── data/
+│   └── EuroSAT/
+│       └── 2750/                 — 27,000 satellite images (10 classes)
+├── models/
+│   └── satellite_classifier.pth  — Saved model (created by train.py)
+├── outputs/
+│   ├── confusion_matrix.png      — Created by evaluate.py
+│   ├── evaluation_report.txt     — Created by evaluate.py
+│   └── demo_*.png / .txt         — Created by detect_deforestation.py
+├── requirements.txt              — Python dependencies
+├── changes_log.txt               — Log of all code changes made
+└── how_to_use.txt                — This file
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Problem: "No saved model found"
+  → Run train.py first. The other scripts need the model file.
+
+Problem: "CUDA out of memory"
+  → Reduce batch size. Open train.py and change BATCH_SIZE from 32 to 16.
+
+Problem: "ModuleNotFoundError"
+  → Install missing packages: pip install -r requirements.txt
+
+Problem: Training is very slow
+  → Check that CUDA is being used. The script prints "Using device: cuda"
+     at startup. If it says "cpu", check your CUDA/PyTorch installation.
+
+Problem: Low accuracy (<80%)
+  → Try increasing epochs (change NUM_EPOCHS in train.py).
+  → Make sure the dataset is complete (27,000 images across 10 folders).
+
+Problem: Confusion matrix looks wrong
+  → Make sure you run evaluate.py AFTER train.py finishes completely.
+  → The test set uses the same random seed, so results are reproducible.
+
+
+================================================================================
+  END OF USER GUIDE
+================================================================================

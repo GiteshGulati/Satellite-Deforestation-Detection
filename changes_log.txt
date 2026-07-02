@@ -1,0 +1,213 @@
+================================================================================
+  SATELLITE DEFORESTATION DETECTION PROJECT — CHANGES LOG
+  Date: 2026-07-02
+================================================================================
+
+
+1. TRAIN.PY — BUGS FIXED & FEATURES ADDED
+--------------------------------------------------------------------------------
+
+   BUGS FIXED:
+
+   a) Transform Bug (Critical)
+      - BEFORE: val and test sets were receiving train-time augmentation
+        (RandomHorizontalFlip, RandomVerticalFlip) because random_split()
+        shares the parent dataset's transform across all subsets.
+      - AFTER: Created a TransformSubset wrapper class that overrides the
+        transform per subset. Val and test sets now correctly use
+        test_transform (resize + normalize only, no augmentation).
+
+   b) Deprecated API Warning
+      - BEFORE: models.resnet50(pretrained=True)
+      - AFTER: models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+      - This avoids the PyTorch deprecation warning.
+
+   c) Hardcoded CUDA Device
+      - BEFORE: model.to("cuda") — crashes if no GPU available.
+      - AFTER: Auto-detects device with torch.device("cuda" if
+        torch.cuda.is_available() else "cpu").
+
+   FEATURES ADDED:
+
+   d) Epochs Increased
+      - BEFORE: num_epochs = 1 (only 1 epoch, insufficient for learning)
+      - AFTER: NUM_EPOCHS = 10 (as recommended by the project guide)
+
+   e) Model Saving
+      - BEFORE: No model was saved after training. All training work was lost.
+      - AFTER: Best model checkpoint is saved to models/satellite_classifier.pth
+        whenever validation accuracy improves. The checkpoint includes:
+        epoch number, model weights, optimizer state, val accuracy, class names.
+
+   f) Progress Bars
+      - BEFORE: Manual batch counter printing every 100 batches.
+      - AFTER: tqdm progress bars for both training and validation phases.
+
+   g) Training Accuracy Tracking
+      - BEFORE: Only validation accuracy was computed.
+      - AFTER: Training accuracy is also computed and displayed each epoch.
+
+   h) Reproducible Splits
+      - BEFORE: random_split used a random seed each run, so train/val/test
+        sets changed every time.
+      - AFTER: Uses generator=torch.Generator().manual_seed(42) so the
+        same split is produced every run. This is critical for evaluate.py
+        to use the exact same test set.
+
+   i) Configuration Section
+      - Added a clean configuration block at the top of the file with all
+        hyperparameters and paths defined as constants (NUM_EPOCHS, BATCH_SIZE,
+        LEARNING_RATE, NUM_CLASSES, DEVICE, etc.)
+
+
+2. EVALUATE.PY — FULLY IMPLEMENTED (was empty)
+--------------------------------------------------------------------------------
+
+   This file was completely empty (0 lines of code). Now implements:
+
+   a) Model Loading
+      - Loads the trained model from models/satellite_classifier.pth
+      - Displays training info (epochs trained, best val accuracy)
+
+   b) Test Set Recreation
+      - Recreates the exact same 80/10/10 split using seed=42
+      - Applies test_transform (no augmentation) to test subset
+
+   c) Classification Report
+      - Runs inference on all test images
+      - Prints sklearn classification_report with precision, recall,
+        and F1-score for all 10 classes plus macro/weighted averages
+
+   d) Confusion Matrix Heatmap
+      - Generates a 10x10 confusion matrix using seaborn heatmap
+      - Saves to outputs/confusion_matrix.png at 150 DPI
+      - Uses Blues colormap with annotations showing exact counts
+
+   e) Per-Class Analysis
+      - Ranks all classes by accuracy with visual bar charts
+      - Highlights strong classes (typically Forest, SeaLake at >95%)
+      - Lists commonly confused class pairs with confusion rates
+      - Documents expected patterns from EuroSAT literature:
+        * Highway/River confusion (both linear features)
+        * Pasture/HerbVeg/AnnualCrop overlap (all green ground cover)
+
+   f) Report Saving
+      - Saves full evaluation report to outputs/evaluation_report.txt
+
+
+3. DETECT_DEFORESTATION.PY — FULLY IMPLEMENTED (was empty)
+--------------------------------------------------------------------------------
+
+   This file was completely empty (0 lines of code). Now implements the
+   complete change detection pipeline from the project guide:
+
+   a) Image Patching (split_image_into_patches)
+      - Takes a satellite image and divides it into a grid of patches
+      - Default patch size: 64x64 pixels
+      - Returns list of (patch_image, x_position, y_position) tuples
+
+   b) Patch Classification (classify_patches)
+      - Runs each patch through the trained ResNet50 model
+      - Processes in batches for GPU efficiency
+      - Returns class prediction and confidence for each patch
+
+   c) Land Cover Map (build_land_cover_map)
+      - Converts classification results into a 2D grid
+      - Each cell contains the predicted land cover class name
+
+   d) Change Detection (detect_changes)
+      - Compares two land cover maps (before and after)
+      - Flags deforestation events: patches classified as "Forest" in the
+        before map that changed to AnnualCrop, Industrial, Pasture,
+        PermanentCrop, or Residential in the after map
+      - Computes statistics: total patches, forest before/after, net change,
+        deforestation rate
+
+   e) Visualization (3 types)
+      - Land cover maps: color-coded maps with legend for each class
+      - Deforestation overlay: 3-panel view (before / after / changes)
+        with deforestation events highlighted in red
+      - All saved to outputs/ directory at 150 DPI
+
+   f) Report Generation
+      - Prints detailed summary: patch counts, forest change, deforestation rate
+      - Transition breakdown: how many Forest patches became each target class
+      - Land cover distribution comparison table (before vs after)
+      - Saves report to outputs/deforestation_report.txt
+
+   g) Demo Mode (--demo flag)
+      - Builds synthetic satellite scenes from EuroSAT images
+      - "Before" scene: ~70% forest with pasture, river, highway, crop
+      - "After" scene: same scene but with forest patches replaced by
+        crop and residential in specific zones (simulating deforestation)
+      - Runs the full pipeline end-to-end without needing Sentinel-2 data
+      - Demonstrates all visualizations and reports
+
+   h) Real Image Mode (--before / --after flags)
+      - Accepts paths to actual satellite images (Sentinel-2 GeoTIFF etc.)
+      - Handles different image sizes between time periods
+      - Full pipeline: patch, classify, compare, visualize, report
+
+   i) CLI Interface
+      - argparse with help text and usage examples
+      - --demo, --before, --after, --patch-size arguments
+
+
+4. WINDOWS ENVIRONMENT & PYTORCH COMPATIBILITY FIXES (Added 2026-07-02)
+--------------------------------------------------------------------------------
+
+   a) PyTorch DataLoader/Subset Compatibility (train.py, evaluate.py)
+      - BUG: In newer PyTorch versions, subclassing Subset and overriding
+        __getitem__ without overriding __getitems__ throws a
+        NotImplementedError when DataLoader batches the subset.
+      - FIX: Implemented the __getitems__ method in the TransformSubset
+        wrapper in both files, resolving the crash.
+
+   b) Windows Console Encoding Support (train.py, evaluate.py, detect_deforestation.py)
+      - BUG: Printing Unicode characters (like block bars █, ░, checkmarks ✓,
+        arrows →, icons ℹ, and box-drawing ─) throws a UnicodeEncodeError
+        in Windows environments where standard console encoding is cp1252.
+      - FIX: Replaced all Unicode printing/formatting characters with robust
+        ASCII-safe equivalents (like '-', '[SAVED]', '->', '[INFO]', '#', etc.)
+        across all three scripts.
+
+
+5. FILES NOT CHANGED
+--------------------------------------------------------------------------------
+
+   - requirements.txt: No changes needed (all dependencies already listed)
+   - .gitignore: No changes needed
+   - data/EuroSAT/2750/: Dataset untouched (27,000 images, 10 classes)
+
+
+6. HOW TO RUN THE PROJECT
+--------------------------------------------------------------------------------
+
+   Step 1 — Train the model (~10-15 minutes on RTX 3050):
+     python src/train.py
+
+   Step 2 — Evaluate on the test set:
+     python src/evaluate.py
+
+   Step 3 — Run deforestation detection demo:
+     python src/detect_deforestation.py --demo
+
+   Step 4 (optional) — Run on real satellite imagery:
+     python src/detect_deforestation.py --before path/to/2018.tif --after path/to/2024.tif
+
+   All outputs are saved to the outputs/ directory:
+     - models/satellite_classifier.pth   (trained model checkpoint)
+     - outputs/confusion_matrix.png      (evaluation heatmap)
+     - outputs/evaluation_report.txt     (classification metrics)
+     - outputs/demo_before.png           (synthetic before scene)
+     - outputs/demo_after.png            (synthetic after scene)
+     - outputs/demo_landcover_before.png (classified land cover map)
+     - outputs/demo_landcover_after.png  (classified land cover map)
+     - outputs/demo_deforestation_detection.png (change detection visual)
+     - outputs/demo_deforestation_report.txt    (analysis report)
+
+
+================================================================================
+  END OF CHANGES LOG
+================================================================================
+
