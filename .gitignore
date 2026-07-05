@@ -4,9 +4,10 @@ __pycache__/
 *.pyc
 
 .idea/
+.claude/
 
 data/
 models/
 outputs/
 
-.DS_Store
+.DS_Store

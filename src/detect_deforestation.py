@@ -173,9 +173,15 @@ def classify_patches(model, patches, batch_size=64):
     return results
 
 
-def build_land_cover_map(results, grid_shape):
+def build_land_cover_map(results, grid_shape, patch_size=64):
     """
     Build a 2D land cover map from classification results.
+
+    Args:
+        results: List of (class_name, class_idx, confidence, x, y) tuples
+        grid_shape: (num_cols, num_rows) of the patch grid
+        patch_size: Size of each patch in pixels (must match the value used in
+                    split_image_into_patches; default 64)
 
     Returns:
         land_cover_map: 2D numpy array of class names, shaped (rows, cols)
@@ -186,8 +192,8 @@ def build_land_cover_map(results, grid_shape):
     confidence_map = np.zeros((num_rows, num_cols))
 
     for class_name, class_idx, confidence, x, y in results:
-        col = x // 64  # Assuming default patch_size=64
-        row = y // 64
+        col = x // patch_size
+        row = y // patch_size
         if row < num_rows and col < num_cols:
             land_cover_map[row, col] = class_name
             confidence_map[row, col] = confidence
@@ -552,12 +558,12 @@ def run_demo(model, patch_size=64):
     print("\n  Running classification pipeline on 'Before' scene...")
     before_patches, before_grid, _ = split_image_into_patches(before_path, patch_size)
     before_results = classify_patches(model, before_patches)
-    map_before, conf_before = build_land_cover_map(before_results, before_grid)
+    map_before, conf_before = build_land_cover_map(before_results, before_grid, patch_size)
 
     print("\n  Running classification pipeline on 'After' scene...")
     after_patches, after_grid, _ = split_image_into_patches(after_path, patch_size)
     after_results = classify_patches(model, after_patches)
-    map_after, conf_after = build_land_cover_map(after_results, after_grid)
+    map_after, conf_after = build_land_cover_map(after_results, after_grid, patch_size)
 
     # --- Detect changes ---
     print("\n  Detecting deforestation...")
@@ -621,13 +627,13 @@ def run_real(model, before_path, after_path, patch_size=64):
     print(f"\n  Processing 'Before' image: {before_path}")
     before_patches, before_grid, before_img = split_image_into_patches(before_path, patch_size)
     before_results = classify_patches(model, before_patches)
-    map_before, conf_before = build_land_cover_map(before_results, before_grid)
+    map_before, conf_before = build_land_cover_map(before_results, before_grid, patch_size)
 
     # Classify after image
     print(f"\n  Processing 'After' image: {after_path}")
     after_patches, after_grid, after_img = split_image_into_patches(after_path, patch_size)
     after_results = classify_patches(model, after_patches)
-    map_after, conf_after = build_land_cover_map(after_results, after_grid)
+    map_after, conf_after = build_land_cover_map(after_results, after_grid, patch_size)
 
     # Validate grid sizes match
     if before_grid != after_grid:
